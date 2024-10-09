@@ -269,45 +269,43 @@ class ClipViewLayout @JvmOverloads constructor(
     }
 
     /**
-     * 判断经过缩放后图片所在的区域是否超出边界，因为放大不会超出裁剪框，这里仅考虑缩小。
-     * @param deltaScale 缩放尺寸
-     * @return 缩放尺寸
+     * 矫正位置，拖拽或者缩放可能导致图片移出，需要手动矫正
      */
-    private fun checkScaleBorder(
+    private fun checkImageLoc(
         borderRectF: RectF,
         imageRectF: RectF,
-        matrix: Matrix,
-        deltaScale: Float
-    ): Float {
-        // 假设缩放的矩形
-        val toRectF = RectF()
-        toRectF.set(imageRectF)
-        // 临时缩放的matrix
-        val tempMatrix = Matrix()
-        tempMatrix.set(matrix)
-        tempMatrix.preScale(deltaScale, deltaScale)
-        tempMatrix.mapRect(toRectF)
-        val toLeft = toRectF.left
-        val toRight = toRectF.right
-        val toTop = toRectF.top
-        val toBottom = toRectF.bottom
-        val horizonScale = (toRight - toLeft) > (borderRectF.right - borderRectF.left)
-        val verticalScale = (toBottom - toTop) / (borderRectF.bottom - borderRectF.top)
-//        val scale = if (isHorizonBeyond && isVerticalBeyond) {
-//            // 都超过了，不缩放
-//            1f
-//        } else if (isHorizonBeyond) {
-//            // 仅水平超过了，缩放
-//            (imageRectF.right - imageRectF.left)
-//        } else if (isVerticalBeyond) {
-//            // 仅垂直超过了，缩放
-//            1f
-//        } else {
-//            // 都没超过，维持原状
-//            deltaScale
-//        }
-//        return scale
-        return 1f
+        imageMatrix: Matrix
+    ){
+        var deltaX = 0f
+        var deltaY = 0f
+        val deltaLeft = borderRectF.left - imageRectF.left
+        val deltaRight = borderRectF.right - imageRectF.right
+        val deltaTop = borderRectF.top - imageRectF.top
+        val deltaBottom = borderRectF.bottom - imageRectF.bottom
+        // 水平方向
+        if (deltaLeft > 0 && deltaRight < 0){
+            // 两边都超过了，需要缩放到指定位置
+            Log.e("lx", "图片超过水平边界")
+        }else if (deltaLeft > 0){
+            // 仅仅左边超过了
+            deltaX = deltaLeft
+        }else if (deltaRight < 0){
+            // 仅仅右边超过了
+            deltaX = deltaRight
+        }
+
+        // 垂直方向
+        if (deltaTop > 0 && deltaBottom < 0){
+            // 两边都超过了，需要缩放到指定位置
+            Log.e("lx", "图片超过竖直边界")
+        }else if (deltaTop > 0){
+            // 仅仅顶部超过了
+            deltaY = deltaTop
+        }else if (deltaBottom < 0){
+            // 仅仅底部超过了
+            deltaY = deltaBottom
+        }
+        imageMatrix.preTranslate(deltaX,deltaY)
     }
 
     private fun onActionMove(event: MotionEvent) {
@@ -332,6 +330,9 @@ class ClipViewLayout @JvmOverloads constructor(
                     0f
                 }
                 mMatrix.preTranslate(deltaX, deltaY)
+                // 检查图像是不是超出，超出需要归位
+                checkImageLoc(borderRect, imageRect, mMatrix)
+                // 更新第一个手指的位置
                 mFirstLastDownPointer.setData(event.x, event.y)
             }
             // 这里是两个手指的情况，处理缩放
@@ -344,14 +345,11 @@ class ClipViewLayout @JvmOverloads constructor(
                 } else {
                     deltaScale
                 }
+                mMatrix.preScale(scale, scale, mMidPointer.x, mMidPointer.y)
+                // 检查图像是不是超出，超出需要归位
                 val borderRect = mClipView.getClipRect()
                 val imageRect = mImageView.getImageViewRect()
-                if (scale < 1f){
-                    // 放大直接放大就可以,缩小需要判断边界
-                    checkScaleBorder(borderRect,imageRect,mMatrix,scale)
-                }
-
-                mMatrix.preScale(scale, scale, mMidPointer.x, mMidPointer.y)
+                checkImageLoc(borderRect, imageRect, mMatrix)
             }
 
             PointerMode.NONE_POINTER -> {
