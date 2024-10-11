@@ -75,7 +75,7 @@ class ClipView @JvmOverloads constructor(
         canvas.restore()
     }
 
-    fun setClipRect(clipRect : Rect){
+    fun setClipRect(clipRect : RectF){
         mClipRect.set(clipRect)
         invalidate()
     }

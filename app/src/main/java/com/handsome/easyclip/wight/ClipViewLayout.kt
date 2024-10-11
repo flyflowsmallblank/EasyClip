@@ -4,7 +4,6 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Matrix
-import android.graphics.Rect
 import android.graphics.RectF
 import android.net.Uri
 import android.util.AttributeSet
@@ -92,10 +91,18 @@ class ClipViewLayout @JvmOverloads constructor(
         }
         if (isResetMatrix){
             mMatrix.reset()
+            mTempMatrix.reset()
         }
 
         val path = ClipViewHelper.getRealFilePathFromUri(context, uri)
-        val bitmap = ClipViewHelper.decodeSampledBitmap(path, 1080, 720)
+        val bitmap = ClipViewHelper.decodeSampledBitmap(path, 720, 1280)
+
+        val clipRect = mClipView.getClipRect()
+        // 如果rect为null就
+        if (clipRect.isEmpty){
+            Log.e("lx", "需要先调用setClipRect设置裁剪区域")
+            return
+        }
 
         // 根据比例设置minScale和maxScale
         val minScale = setBorderScale(bitmap)
@@ -104,24 +111,23 @@ class ClipViewLayout @JvmOverloads constructor(
 
         // 平移,将缩放后的图片平移到imageview的中心
         //imageView的中心x
-        val midX= mImageView.width / 2
+        val imageViewMidX= mImageView.width.toFloat() / 2
         //imageView的中心y
-        val midY= mImageView.height / 2
+        val imageViewMidY= mImageView.height.toFloat() / 2
         //bitmap的中心x
-        val imageMidX = (bitmap.width * minScale / 2)
+        val bitmapMidX = (bitmap.width * minScale / 2)
         //bitmap的中心y
-        val imageMidY = (bitmap.height * minScale / 2)
-        val deltaX = midX - imageMidX
-        val deltaY = midY - imageMidY
+        val bitmapMidY = (bitmap.height * minScale / 2)
+        val deltaX = imageViewMidX - bitmapMidX
+        val deltaY = imageViewMidY - bitmapMidY
         mTempMatrix.preTranslate(deltaX,deltaY)
-
         mImageView.imageMatrix = mTempMatrix
         mImageView.setImageBitmap(bitmap)
     }
 
     /**
      * 根据[mAspectRadio]设置最小比例
-     * 假如mAspectRadio9:16。图片长宽高比例为9:15，高相对较短，以高为准。
+     * 假如mAspectRadio9:16。图片宽高比例为9:15，高相对较短，以高为准。
      * @return 返回最小尺寸
      */
     private fun setBorderScale(bitmap: Bitmap): Float {
@@ -283,28 +289,35 @@ class ClipViewLayout @JvmOverloads constructor(
         val deltaTop = borderRectF.top - imageRectF.top
         val deltaBottom = borderRectF.bottom - imageRectF.bottom
         // 水平方向
-        if (deltaLeft > 0 && deltaRight < 0){
-            // 两边都超过了，需要缩放到指定位置
-            Log.e("lx", "图片超过水平边界")
-        }else if (deltaLeft > 0){
+        if (deltaLeft < 0 && deltaRight > 0){
+            //todo 两边都超过了，需要缩放到指定位置，优先级不高
+            Log.e("lx", "水平方向溢出")
+        }else if (deltaLeft < 0 && deltaRight < 0){
             // 仅仅左边超过了
             deltaX = deltaLeft
-        }else if (deltaRight < 0){
+        }else if (deltaLeft > 0 && deltaRight > 0){
             // 仅仅右边超过了
             deltaX = deltaRight
+        }else{
+            // 两边都没超过
+            deltaX = 0f
         }
 
         // 垂直方向
-        if (deltaTop > 0 && deltaBottom < 0){
+        if (deltaTop < 0 && deltaBottom > 0){
             // 两边都超过了，需要缩放到指定位置
-            Log.e("lx", "图片超过竖直边界")
-        }else if (deltaTop > 0){
+            Log.e("lx", "竖直方向溢出")
+        }else if (deltaTop < 0 && deltaBottom < 0){
             // 仅仅顶部超过了
             deltaY = deltaTop
-        }else if (deltaBottom < 0){
+        }else if (deltaTop > 0 && deltaBottom > 0){
             // 仅仅底部超过了
             deltaY = deltaBottom
+        }else{
+            // 两边都没超过
+            deltaY = 0f
         }
+        Log.d("lx", "checkImageLoc:deltaX=${deltaX} deltaY=${deltaY} ")
         imageMatrix.preTranslate(deltaX,deltaY)
     }
 
@@ -332,6 +345,7 @@ class ClipViewLayout @JvmOverloads constructor(
                 mMatrix.preTranslate(deltaX, deltaY)
                 // 检查图像是不是超出，超出需要归位
                 checkImageLoc(borderRect, imageRect, mMatrix)
+                Log.d("lx", "imageRect = ${imageRect} ")
                 // 更新第一个手指的位置
                 mFirstLastDownPointer.setData(event.x, event.y)
             }
@@ -347,9 +361,11 @@ class ClipViewLayout @JvmOverloads constructor(
                 }
                 mMatrix.preScale(scale, scale, mMidPointer.x, mMidPointer.y)
                 // 检查图像是不是超出，超出需要归位
-                val borderRect = mClipView.getClipRect()
-                val imageRect = mImageView.getImageViewRect()
-                checkImageLoc(borderRect, imageRect, mMatrix)
+                if (deltaScale < 1f){
+                    val borderRect = mClipView.getClipRect()
+                    val imageRect = mImageView.getImageViewRect()
+                    checkImageLoc(borderRect, imageRect, mMatrix)
+                }
             }
 
             PointerMode.NONE_POINTER -> {
@@ -377,12 +393,13 @@ class ClipViewLayout @JvmOverloads constructor(
     /**
      * 负责设置区域
      */
-    fun setClipRect(clipRect: Rect) {
+    fun setClipRect(clipRect: RectF) {
         val left = clipRect.left
-        val top = (mImageView.height - clipRect.height()) / 2
+        val top = (mImageView.height.toFloat() - clipRect.height()) / 2
         val right = clipRect.right
-        val bottom = (mImageView.height + clipRect.height()) / 2
-        mClipView.setClipRect(Rect(left,top,right,bottom))
+        val bottom = (mImageView.height.toFloat() + clipRect.height()) / 2
+        mClipView.setClipRect(RectF(left,top,right,bottom))
+        Log.d("lx", "setClipRect:${RectF(left,top,right,bottom)} ")
     }
 
     /**

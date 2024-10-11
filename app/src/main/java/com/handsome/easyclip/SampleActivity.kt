@@ -3,10 +3,12 @@ package com.handsome.easyclip
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Rect
+import android.graphics.RectF
 import android.net.Uri
 import android.os.Bundle
 import android.provider.MediaStore
+import android.view.ViewTreeObserver
+import android.view.ViewTreeObserver.OnGlobalLayoutListener
 import android.widget.Button
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -74,11 +76,11 @@ class SampleActivity : AppCompatActivity() {
     }
 
     private fun setImageUri(uri: Uri?) {
-        val left = 50
-        val top = 50
-        val bottom = 1000
+        val left = 50f
+        val top = 0f
+        val bottom = 1000f
         val right = ClipViewHelper.getScreenWidth(this) - left
-        mClipLayout.setClipRect(Rect(left, top, right, bottom))
+        mClipLayout.setClipRect(RectF(left, top, right, bottom))
         mClipLayout.setImageUri(uri,false)
     }
 
