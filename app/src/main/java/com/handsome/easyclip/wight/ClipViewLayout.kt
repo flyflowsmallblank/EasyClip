@@ -53,9 +53,6 @@ class ClipViewLayout @JvmOverloads constructor(
     // 如果有第二个手指的情况，刚开始两个手指的距离，即平方差
     private var mTwoPointerDistance = -1f
 
-    // 变化的坐标
-    private var mDeltaPointer = PointerBean(-1f, -1f)
-
     // 当前固定的比例，宽高比例
     private var mAspectRadio = 1f
 
@@ -92,6 +89,7 @@ class ClipViewLayout @JvmOverloads constructor(
         if (isResetMatrix){
             mMatrix.reset()
             mTempMatrix.reset()
+            mImageView.imageMatrix = mMatrix
         }
 
         val path = ClipViewHelper.getRealFilePathFromUri(context, uri)
@@ -120,7 +118,7 @@ class ClipViewLayout @JvmOverloads constructor(
         val bitmapMidY = (bitmap.height * minScale / 2)
         val deltaX = imageViewMidX - bitmapMidX
         val deltaY = imageViewMidY - bitmapMidY
-        mTempMatrix.preTranslate(deltaX,deltaY)
+        mTempMatrix.postTranslate(deltaX,deltaY)
         mImageView.imageMatrix = mTempMatrix
         mImageView.setImageBitmap(bitmap)
     }
@@ -196,7 +194,7 @@ class ClipViewLayout @JvmOverloads constructor(
                 mTwoPointerDistance =
                     calculateTwoPointerDistance(mFirstLastDownPointer, mSecondLastDownPointer)
                 // 离得太近倍数太大
-                if (mTwoPointerDistance < 20f) {
+                if (mTwoPointerDistance < 10f) {
                     mTwoPointerDistance = -1f
                     mSecondLastDownPointer.setData(-1f, -1f)
                     return true
@@ -214,6 +212,7 @@ class ClipViewLayout @JvmOverloads constructor(
             // 手指离开屏幕
             MotionEvent.ACTION_UP,
             MotionEvent.ACTION_CANCEL -> {
+                checkImageLoc(true)
                 onActionUp()
             }
             // 第二根手指离开屏幕，不允许再移动
@@ -229,6 +228,7 @@ class ClipViewLayout @JvmOverloads constructor(
         }
         return true
     }
+
 
     /**
      * 获取ImageView根据matrix缩放的
@@ -275,6 +275,18 @@ class ClipViewLayout @JvmOverloads constructor(
     }
 
     /**
+     * 矫正位置
+     */
+    private fun checkImageLoc(isNeedAction : Boolean){
+        val borderRect = mClipView.getClipRect()
+        val imageRect = mImageView.getImageViewRect()
+        checkImageLoc(borderRect, imageRect, mMatrix)
+        if (isNeedAction){
+            mImageView.imageMatrix = mMatrix
+        }
+    }
+
+    /**
      * 矫正位置，拖拽或者缩放可能导致图片移出，需要手动矫正
      */
     private fun checkImageLoc(
@@ -317,35 +329,20 @@ class ClipViewLayout @JvmOverloads constructor(
             // 两边都没超过
             deltaY = 0f
         }
+        Log.d("lx", "checkImageLoc:框的位置 ${borderRectF} ")
+        Log.d("lx", "checkImageLoc:改变之前imageMatrix=${imageMatrix} ")
+        Log.d("lx", "checkImageLoc:bitmap的位置 ${imageRectF} ")
         Log.d("lx", "checkImageLoc:deltaX=${deltaX} deltaY=${deltaY} ")
-        imageMatrix.preTranslate(deltaX,deltaY)
+        imageMatrix.postTranslate(deltaX, deltaY)
+        Log.d("lx", "checkImageLoc:改变之后imageMatrix=${imageMatrix} ")
     }
 
     private fun onActionMove(event: MotionEvent) {
         when (mPointerMode) {
             // 这里是一个手指的情况，处理移动
             PointerMode.DRAG_POINTER -> {
-                calculateDeltaDistance(event.x, event.y)
-                val borderRect = mClipView.getClipRect()
-                val imageRect = mImageView.getImageViewRect()
-                val isBeyondXY = checkDragBorder(borderRect, imageRect, mDeltaPointer)
-                val isHorizonBeyond = isBeyondXY.first
-                val isVerticalBeyond = isBeyondXY.second
-                // 在指定的范围内滑动，如果超过就不允许滑动
-                val deltaX = if (isHorizonBeyond) {
-                    mDeltaPointer.x
-                } else {
-                    0f
-                }
-                val deltaY = if (isVerticalBeyond) {
-                    mDeltaPointer.y
-                } else {
-                    0f
-                }
-                mMatrix.preTranslate(deltaX, deltaY)
-                // 检查图像是不是超出，超出需要归位
-                checkImageLoc(borderRect, imageRect, mMatrix)
-                Log.d("lx", "imageRect = ${imageRect} ")
+                val deltaPointerBean = calculateDeltaDistance(event.x, event.y)
+                mMatrix.postTranslate(deltaPointerBean.x, deltaPointerBean.y)
                 // 更新第一个手指的位置
                 mFirstLastDownPointer.setData(event.x, event.y)
             }
@@ -354,18 +351,14 @@ class ClipViewLayout @JvmOverloads constructor(
                 val fromScale = getScale()
                 val deltaScale = calculateScale(event)
                 val toScale = fromScale * deltaScale
-                val scale = if (toScale < mMinScale || toScale > mMaxScale) {
-                    1f
+                val scale = if (toScale < mMinScale) {
+                    mMinScale / fromScale
+                }else if (toScale > mMaxScale){
+                    mMaxScale / fromScale
                 } else {
                     deltaScale
                 }
                 mMatrix.preScale(scale, scale, mMidPointer.x, mMidPointer.y)
-                // 检查图像是不是超出，超出需要归位
-                if (deltaScale < 1f){
-                    val borderRect = mClipView.getClipRect()
-                    val imageRect = mImageView.getImageViewRect()
-                    checkImageLoc(borderRect, imageRect, mMatrix)
-                }
             }
 
             PointerMode.NONE_POINTER -> {
@@ -387,7 +380,6 @@ class ClipViewLayout @JvmOverloads constructor(
         mSecondLastDownPointer.setData(-1f, -1f)
         mMidPointer.setData(-1f, -1f)
         mTwoPointerDistance = -1f
-        mDeltaPointer.setData(-1f, -1f)
     }
 
     /**
@@ -447,10 +439,10 @@ class ClipViewLayout @JvmOverloads constructor(
     /**
      * 计算需要移动的距离
      */
-    private fun calculateDeltaDistance(x: Float, y: Float) {
+    private fun calculateDeltaDistance(x: Float, y: Float) : PointerBean{
         val deltaX = x - mFirstLastDownPointer.x
         val deltaY = y - mFirstLastDownPointer.y
-        mDeltaPointer.setData(deltaX, deltaY)
+        return PointerBean(deltaX,deltaY)
     }
 
     /**
