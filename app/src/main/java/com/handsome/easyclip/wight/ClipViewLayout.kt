@@ -15,6 +15,7 @@ import com.handsome.easyclip.wight.bean.PointerBean
 import com.handsome.easyclip.wight.bean.PointerMode
 import com.handsome.easyclip.wight.helper.ClipViewHelper
 import kotlin.math.abs
+import kotlin.math.pow
 import kotlin.math.sqrt
 
 
@@ -64,6 +65,12 @@ class ClipViewLayout @JvmOverloads constructor(
 
     // 最大scale的值
     private var mMaxScale = 2f
+
+    // 缩放程度，比如缩放16倍，缩放程度为1/4，就会开四次方，缩放2倍，防止用户缩放变化过快
+    private var mScaleLevel = 1f / 4f
+
+    // 超出后位移程度，给用户一个反馈，比如移动100m，缩放程度为2/3f。最终体现上是66m
+    private var mTranslateLevel = 1f / 2f
 
     init {
         mClipView.layoutParams = LayoutParams(
@@ -194,7 +201,7 @@ class ClipViewLayout @JvmOverloads constructor(
                 mTwoPointerDistance =
                     calculateTwoPointerDistance(mFirstLastDownPointer, mSecondLastDownPointer)
                 // 离得太近倍数太大
-                if (mTwoPointerDistance < 10f) {
+                if (mTwoPointerDistance < 40f) {
                     mTwoPointerDistance = -1f
                     mSecondLastDownPointer.setData(-1f, -1f)
                     return true
@@ -269,8 +276,8 @@ class ClipViewLayout @JvmOverloads constructor(
         val toRight = imageRectF.right + deltaPointer.x
         val toTop = imageRectF.top + deltaPointer.y
         val toBottom = imageRectF.bottom + deltaPointer.y
-        val isHorizonBeyond = toLeft < borderRectF.left && toRight > borderRectF.right
-        val isVerticalBeyond = toTop < borderRectF.top && toBottom > borderRectF.bottom
+        val isHorizonBeyond = toLeft > borderRectF.left || toRight < borderRectF.right
+        val isVerticalBeyond = toTop > borderRectF.top || toBottom < borderRectF.bottom
         return isHorizonBeyond to isVerticalBeyond
     }
 
@@ -294,6 +301,20 @@ class ClipViewLayout @JvmOverloads constructor(
         imageRectF: RectF,
         imageMatrix: Matrix
     ){
+        val deltaXY = calculateToBorderDistance(borderRectF, imageRectF)
+        val deltaX = deltaXY.first
+        val deltaY = deltaXY.second
+        imageMatrix.postTranslate(deltaX, deltaY)
+    }
+
+    /**
+     * 根据borderRect和imageRect计算出到达border需要的距离
+     * @return 不超出边框ImageView需要移动的距离
+     */
+    private fun calculateToBorderDistance(
+        borderRectF: RectF,
+        imageRectF: RectF
+    ): Pair<Float, Float> {
         var deltaX = 0f
         var deltaY = 0f
         val deltaLeft = borderRectF.left - imageRectF.left
@@ -329,44 +350,69 @@ class ClipViewLayout @JvmOverloads constructor(
             // 两边都没超过
             deltaY = 0f
         }
-        Log.d("lx", "checkImageLoc:框的位置 ${borderRectF} ")
-        Log.d("lx", "checkImageLoc:改变之前imageMatrix=${imageMatrix} ")
-        Log.d("lx", "checkImageLoc:bitmap的位置 ${imageRectF} ")
-        Log.d("lx", "checkImageLoc:deltaX=${deltaX} deltaY=${deltaY} ")
-        imageMatrix.postTranslate(deltaX, deltaY)
-        Log.d("lx", "checkImageLoc:改变之后imageMatrix=${imageMatrix} ")
+        return deltaX to deltaY
     }
 
+    /**
+     * 手指移动中拖拽的处理
+     */
+    private fun onDragMove(event: MotionEvent) {
+        val deltaPointerBean = calculateDeltaDistance(event.x, event.y)
+        val borderRectF = mClipView.getClipRect()
+        val imageRectF = mImageView.getImageViewRect()
+        val isExceedXY = checkDragBorder(borderRectF, imageRectF, deltaPointerBean)
+        if (isExceedXY.first){
+            deltaPointerBean.x *= mTranslateLevel
+        }
+        if (isExceedXY.second){
+            deltaPointerBean.y *= mTranslateLevel
+        }
+        mMatrix.postTranslate(deltaPointerBean.x, deltaPointerBean.y)
+        // 更新第一个手指的位置
+        mFirstLastDownPointer.setData(event.x, event.y)
+    }
+
+    /**
+     * 手指移动中缩放的处理
+     */
+    private fun onScaleMove(event: MotionEvent) {
+        val fromScale = getScale()
+        val deltaScale = calculateScale(event)
+        val toScale = fromScale * deltaScale
+        // 这里是为了防止多次放大才能到边界。
+        // 保证缩放到最大和最小的时候就是最大和最小而不是1f固定不变。
+        var scale = if (toScale < mMinScale) {
+            mMinScale / fromScale
+        }else if (toScale > mMaxScale){
+            mMaxScale / fromScale
+        } else {
+            deltaScale
+        }
+
+        // 这个是设置缩放的倍数，优化用户体验的
+        scale = scale.pow(mScaleLevel)
+        mMatrix.preScale(scale, scale, mMidPointer.x, mMidPointer.y)
+    }
+
+    /**
+     * 处理手指移动
+     */
     private fun onActionMove(event: MotionEvent) {
         when (mPointerMode) {
             // 这里是一个手指的情况，处理移动
             PointerMode.DRAG_POINTER -> {
-                val deltaPointerBean = calculateDeltaDistance(event.x, event.y)
-                mMatrix.postTranslate(deltaPointerBean.x, deltaPointerBean.y)
-                // 更新第一个手指的位置
-                mFirstLastDownPointer.setData(event.x, event.y)
+                onDragMove(event)
             }
             // 这里是两个手指的情况，处理缩放
             PointerMode.SCALE_POINTER -> {
-                val fromScale = getScale()
-                val deltaScale = calculateScale(event)
-                val toScale = fromScale * deltaScale
-                val scale = if (toScale < mMinScale) {
-                    mMinScale / fromScale
-                }else if (toScale > mMaxScale){
-                    mMaxScale / fromScale
-                } else {
-                    deltaScale
-                }
-                mMatrix.preScale(scale, scale, mMidPointer.x, mMidPointer.y)
+                onScaleMove(event)
             }
 
+            // 不处理
             PointerMode.NONE_POINTER -> {
-                // 不处理
                 return
             }
         }
-        Log.d("lx", "手指操作模式=${mPointerMode}  mMatrix=${mMatrix}")
         mImageView.imageMatrix = mMatrix
     }
 
