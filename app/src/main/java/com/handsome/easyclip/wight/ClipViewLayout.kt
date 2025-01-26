@@ -1,5 +1,7 @@
 package com.handsome.easyclip.wight
 
+import android.animation.Animator
+import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -163,6 +165,14 @@ class ClipViewLayout @JvmOverloads constructor(
     }
 
     /**
+     * 获得当前的移动位置
+     */
+    private fun getTranslateXY(): Pair<Float,Float> {
+        mMatrix.getValues(mMatrixValues)
+        return mMatrixValues[Matrix.MTRANS_X] to mMatrixValues[Matrix.MTRANS_Y]
+    }
+
+    /**
      * 负责裁剪图片
      */
     fun clipBitMap(): Uri? {
@@ -288,9 +298,7 @@ class ClipViewLayout @JvmOverloads constructor(
         val borderRect = mClipView.getClipRect()
         val imageRect = mImageView.getImageViewRect()
         checkImageLoc(borderRect, imageRect, mMatrix)
-        if (isNeedAction){
-            mImageView.imageMatrix = mMatrix
-        }
+        Log.d("lx", "超出恢复之后的matrix = ${mMatrix} ")
     }
 
     /**
@@ -304,7 +312,8 @@ class ClipViewLayout @JvmOverloads constructor(
         val deltaXY = calculateToBorderDistance(borderRectF, imageRectF)
         val deltaX = deltaXY.first
         val deltaY = deltaXY.second
-        imageMatrix.postTranslate(deltaX, deltaY)
+        slowPostTranslate(PointerBean(deltaX,deltaY),200)
+        // imageMatrix.postTranslate(deltaX, deltaY)
     }
 
     /**
@@ -367,9 +376,44 @@ class ClipViewLayout @JvmOverloads constructor(
         if (isExceedXY.second){
             deltaPointerBean.y *= mTranslateLevel
         }
+        Log.d("lx", "拖拽之前的matrix = ${mMatrix} ")
         mMatrix.postTranslate(deltaPointerBean.x, deltaPointerBean.y)
         // 更新第一个手指的位置
         mFirstLastDownPointer.setData(event.x, event.y)
+    }
+
+    /**
+     * matrix 逐渐变化
+     * @param deltaPointer 移动的距离
+     * @param time 移动需要的时间
+     */
+    private fun slowPostTranslate(deltaPointer: PointerBean,time : Long){
+        val originLoc = getTranslateXY()
+        val animator = ValueAnimator.ofFloat(0f,1f)
+        animator.addUpdateListener {
+            val curLoc = getTranslateXY()
+            val progress = it.animatedValue as Float
+            val deltaX = deltaPointer.x * progress
+            val deltaY = deltaPointer.y * progress
+            val finalX = originLoc.first + deltaX - curLoc.first
+            val finalY = originLoc.second + deltaY - curLoc.second
+            mMatrix.postTranslate(finalX, finalY)
+            mImageView.imageMatrix = mMatrix
+        }
+        animator.addListener(object : Animator.AnimatorListener{
+            override fun onAnimationStart(animation: Animator) {}
+
+            override fun onAnimationEnd(animation: Animator) {
+                mTempMatrix.set(mMatrix)
+            }
+
+            override fun onAnimationCancel(animation: Animator) {}
+
+            override fun onAnimationRepeat(animation: Animator){}
+        })
+        animator.duration = time
+        animator.repeatCount = 0
+        animator.start()
     }
 
     /**
