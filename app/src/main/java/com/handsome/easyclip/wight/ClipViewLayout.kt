@@ -53,6 +53,9 @@ class ClipViewLayout @JvmOverloads constructor(
     // 如果有第二个手指的情况，中间位置
     private var mMidPointer = PointerBean(-1f, -1f)
 
+    // 相对中点，即相对于bitmap的中点
+    private var mRelativeMidPointer = PointerBean(-1f, -1f)
+
     // 如果有第二个手指的情况，刚开始两个手指的距离，即平方差
     private var mTwoPointerDistance = -1f
 
@@ -63,16 +66,19 @@ class ClipViewLayout @JvmOverloads constructor(
     private var mMatrixValues = FloatArray(9)
 
     // 最小scale的值
-    private var mMinScale = 0.5f
+    private var mMinScale = 0.25f
 
     // 最大scale的值
-    private var mMaxScale = 2f
+    private var mMaxScale = 3f
 
     // 缩放程度，比如缩放16倍，缩放程度为1/4，就会开四次方，缩放2倍，防止用户缩放变化过快
-    private var mScaleLevel = 1f / 4f
+    private var mScaleLevel = 1f / 6f
 
     // 超出后位移程度，给用户一个反馈，比如移动100m，缩放程度为2/3f。最终体现上是66m
     private var mTranslateLevel = 1f / 2f
+
+    // originXY的FloatArray
+    private val mOriginXY = FloatArray(2)
 
     init {
         mClipView.layoutParams = LayoutParams(
@@ -91,11 +97,11 @@ class ClipViewLayout @JvmOverloads constructor(
     /**
      * 更新图片的显示
      */
-    fun setImageUri(uri: Uri?,isResetMatrix : Boolean) {
+    fun setImageUri(uri: Uri?, isResetMatrix: Boolean) {
         if (uri == null) {
             Log.e(javaClass.name, "uri不能为null")
         }
-        if (isResetMatrix){
+        if (isResetMatrix) {
             mMatrix.reset()
             mTempMatrix.reset()
             mImageView.imageMatrix = mMatrix
@@ -106,7 +112,7 @@ class ClipViewLayout @JvmOverloads constructor(
 
         val clipRect = mClipView.getClipRect()
         // 如果rect为null就
-        if (clipRect.isEmpty){
+        if (clipRect.isEmpty) {
             Log.e("lx", "需要先调用setClipRect设置裁剪区域")
             return
         }
@@ -114,20 +120,20 @@ class ClipViewLayout @JvmOverloads constructor(
         // 根据比例设置minScale和maxScale
         val minScale = setBorderScale(bitmap)
         mMinScale = minScale
-        mTempMatrix.preScale(minScale,minScale)
+        mTempMatrix.preScale(minScale, minScale)
 
         // 平移,将缩放后的图片平移到imageview的中心
         //imageView的中心x
-        val imageViewMidX= mImageView.width.toFloat() / 2
+        val imageViewMidX = mImageView.width.toFloat() / 2
         //imageView的中心y
-        val imageViewMidY= mImageView.height.toFloat() / 2
+        val imageViewMidY = mImageView.height.toFloat() / 2
         //bitmap的中心x
         val bitmapMidX = (bitmap.width * minScale / 2)
         //bitmap的中心y
         val bitmapMidY = (bitmap.height * minScale / 2)
         val deltaX = imageViewMidX - bitmapMidX
         val deltaY = imageViewMidY - bitmapMidY
-        mTempMatrix.postTranslate(deltaX,deltaY)
+        mTempMatrix.postTranslate(deltaX, deltaY)
         mImageView.imageMatrix = mTempMatrix
         mImageView.setImageBitmap(bitmap)
     }
@@ -138,7 +144,7 @@ class ClipViewLayout @JvmOverloads constructor(
      * @return 返回最小尺寸
      */
     private fun setBorderScale(bitmap: Bitmap): Float {
-        val minScale : Float
+        val minScale: Float
         val bitmapWidth = bitmap.width.toFloat()
         val bitmapHeight = bitmap.height.toFloat()
         val bitmapAspectRadio = bitmapWidth / bitmapHeight
@@ -167,7 +173,7 @@ class ClipViewLayout @JvmOverloads constructor(
     /**
      * 获得当前的移动位置
      */
-    private fun getTranslateXY(): Pair<Float,Float> {
+    private fun getTranslateXY(): Pair<Float, Float> {
         mMatrix.getValues(mMatrixValues)
         return mMatrixValues[Matrix.MTRANS_X] to mMatrixValues[Matrix.MTRANS_Y]
     }
@@ -219,12 +225,7 @@ class ClipViewLayout @JvmOverloads constructor(
                 mMatrix.set(mTempMatrix)
                 // 默认就是单指，这里是将其变成多指mode
                 mPointerMode = PointerMode.SCALE_POINTER
-                // 获得两指之间的位置
-                calculateTwoPointerMidLoc(
-                    mMidPointer,
-                    mFirstLastDownPointer,
-                    mSecondLastDownPointer
-                )
+                calculateMidLoc()
             }
             // 手指离开屏幕
             MotionEvent.ACTION_UP,
@@ -244,6 +245,44 @@ class ClipViewLayout @JvmOverloads constructor(
             else -> return true
         }
         return true
+    }
+
+    /**
+     * 计算两个手指之间的相对位置和绝对位置
+     */
+    private fun calculateMidLoc() {
+        calculateAbsoluteMidLoc()
+        calculateRelativeMidLoc()
+    }
+
+    /**
+     * 计算两根手指中间的位置
+     */
+    private fun calculateAbsoluteMidLoc() {
+        val midX = (mFirstLastDownPointer.x + mSecondLastDownPointer.x) / 2
+        val midY = (mFirstLastDownPointer.y + mSecondLastDownPointer.y) / 2
+        mMidPointer.setData(x = midX, y = midY)
+    }
+
+    /**
+     * 计算两根手指中间的位置，相对bitmap原点的距离
+     */
+    private fun calculateRelativeMidLoc() {
+        // 获取当前图片左上角的坐标
+        val imageRect = mImageView.getImageViewRect()
+        val imageLeft = imageRect.left
+        val imageTop = imageRect.top
+
+        // 计算绝对中点相对于图片的位置
+        val relativeX = mMidPointer.x - imageLeft
+        val relativeY = mMidPointer.y - imageTop
+
+        // 转换为未缩放时的坐标
+        val currentScale = getScale()
+        mRelativeMidPointer.setData(
+            relativeX / currentScale,
+            relativeY / currentScale
+        )
     }
 
 
@@ -294,11 +333,10 @@ class ClipViewLayout @JvmOverloads constructor(
     /**
      * 矫正位置
      */
-    private fun checkImageLoc(isNeedAction : Boolean){
+    private fun checkImageLoc(isNeedAction: Boolean) {
         val borderRect = mClipView.getClipRect()
         val imageRect = mImageView.getImageViewRect()
         checkImageLoc(borderRect, imageRect, mMatrix)
-        Log.d("lx", "超出恢复之后的matrix = ${mMatrix} ")
     }
 
     /**
@@ -308,11 +346,11 @@ class ClipViewLayout @JvmOverloads constructor(
         borderRectF: RectF,
         imageRectF: RectF,
         imageMatrix: Matrix
-    ){
+    ) {
         val deltaXY = calculateToBorderDistance(borderRectF, imageRectF)
         val deltaX = deltaXY.first
         val deltaY = deltaXY.second
-        slowPostTranslate(PointerBean(deltaX,deltaY),200)
+        slowPostTranslate(PointerBean(deltaX, deltaY), 200)
         // imageMatrix.postTranslate(deltaX, deltaY)
     }
 
@@ -331,31 +369,31 @@ class ClipViewLayout @JvmOverloads constructor(
         val deltaTop = borderRectF.top - imageRectF.top
         val deltaBottom = borderRectF.bottom - imageRectF.bottom
         // 水平方向
-        if (deltaLeft < 0 && deltaRight > 0){
+        if (deltaLeft < 0 && deltaRight > 0) {
             //todo 两边都超过了，需要缩放到指定位置，优先级不高
             Log.e("lx", "水平方向溢出")
-        }else if (deltaLeft < 0 && deltaRight < 0){
+        } else if (deltaLeft < 0 && deltaRight < 0) {
             // 仅仅左边超过了
             deltaX = deltaLeft
-        }else if (deltaLeft > 0 && deltaRight > 0){
+        } else if (deltaLeft > 0 && deltaRight > 0) {
             // 仅仅右边超过了
             deltaX = deltaRight
-        }else{
+        } else {
             // 两边都没超过
             deltaX = 0f
         }
 
         // 垂直方向
-        if (deltaTop < 0 && deltaBottom > 0){
+        if (deltaTop < 0 && deltaBottom > 0) {
             // 两边都超过了，需要缩放到指定位置
             Log.e("lx", "竖直方向溢出")
-        }else if (deltaTop < 0 && deltaBottom < 0){
+        } else if (deltaTop < 0 && deltaBottom < 0) {
             // 仅仅顶部超过了
             deltaY = deltaTop
-        }else if (deltaTop > 0 && deltaBottom > 0){
+        } else if (deltaTop > 0 && deltaBottom > 0) {
             // 仅仅底部超过了
             deltaY = deltaBottom
-        }else{
+        } else {
             // 两边都没超过
             deltaY = 0f
         }
@@ -370,13 +408,12 @@ class ClipViewLayout @JvmOverloads constructor(
         val borderRectF = mClipView.getClipRect()
         val imageRectF = mImageView.getImageViewRect()
         val isExceedXY = checkDragBorder(borderRectF, imageRectF, deltaPointerBean)
-        if (isExceedXY.first){
+        if (isExceedXY.first) {
             deltaPointerBean.x *= mTranslateLevel
         }
-        if (isExceedXY.second){
+        if (isExceedXY.second) {
             deltaPointerBean.y *= mTranslateLevel
         }
-        Log.d("lx", "拖拽之前的matrix = ${mMatrix} ")
         mMatrix.postTranslate(deltaPointerBean.x, deltaPointerBean.y)
         // 更新第一个手指的位置
         mFirstLastDownPointer.setData(event.x, event.y)
@@ -387,9 +424,9 @@ class ClipViewLayout @JvmOverloads constructor(
      * @param deltaPointer 移动的距离
      * @param time 移动需要的时间
      */
-    private fun slowPostTranslate(deltaPointer: PointerBean,time : Long){
+    private fun slowPostTranslate(deltaPointer: PointerBean, time: Long) {
         val originLoc = getTranslateXY()
-        val animator = ValueAnimator.ofFloat(0f,1f)
+        val animator = ValueAnimator.ofFloat(0f, 1f)
         animator.addUpdateListener {
             val curLoc = getTranslateXY()
             val progress = it.animatedValue as Float
@@ -400,7 +437,7 @@ class ClipViewLayout @JvmOverloads constructor(
             mMatrix.postTranslate(finalX, finalY)
             mImageView.imageMatrix = mMatrix
         }
-        animator.addListener(object : Animator.AnimatorListener{
+        animator.addListener(object : Animator.AnimatorListener {
             override fun onAnimationStart(animation: Animator) {}
 
             override fun onAnimationEnd(animation: Animator) {
@@ -409,7 +446,7 @@ class ClipViewLayout @JvmOverloads constructor(
 
             override fun onAnimationCancel(animation: Animator) {}
 
-            override fun onAnimationRepeat(animation: Animator){}
+            override fun onAnimationRepeat(animation: Animator) {}
         })
         animator.duration = time
         animator.repeatCount = 0
@@ -427,7 +464,7 @@ class ClipViewLayout @JvmOverloads constructor(
         // 保证缩放到最大和最小的时候就是最大和最小而不是1f固定不变。
         var scale = if (toScale < mMinScale) {
             mMinScale / fromScale
-        }else if (toScale > mMaxScale){
+        } else if (toScale > mMaxScale) {
             mMaxScale / fromScale
         } else {
             deltaScale
@@ -435,7 +472,8 @@ class ClipViewLayout @JvmOverloads constructor(
 
         // 这个是设置缩放的倍数，优化用户体验的
         scale = scale.pow(mScaleLevel)
-        mMatrix.preScale(scale, scale, mMidPointer.x, mMidPointer.y)
+        // 按比例计算缩放中心
+        mMatrix.preScale(scale, scale, mRelativeMidPointer.x, mRelativeMidPointer.y)
     }
 
     /**
@@ -469,6 +507,7 @@ class ClipViewLayout @JvmOverloads constructor(
         mFirstLastDownPointer.setData(-1f, -1f)
         mSecondLastDownPointer.setData(-1f, -1f)
         mMidPointer.setData(-1f, -1f)
+        mRelativeMidPointer.setData(-1f, -1f)
         mTwoPointerDistance = -1f
     }
 
@@ -480,22 +519,10 @@ class ClipViewLayout @JvmOverloads constructor(
         val top = (mImageView.height.toFloat() - clipRect.height()) / 2
         val right = clipRect.right
         val bottom = (mImageView.height.toFloat() + clipRect.height()) / 2
-        mClipView.setClipRect(RectF(left,top,right,bottom))
-        Log.d("lx", "setClipRect:${RectF(left,top,right,bottom)} ")
+        mClipView.setClipRect(RectF(left, top, right, bottom))
     }
 
-    /**
-     * 计算两根手指中间的位置
-     */
-    private fun calculateTwoPointerMidLoc(
-        midPointerBean: PointerBean,
-        firstPointer: PointerBean,
-        secondPointer: PointerBean
-    ) {
-        val midX = (firstPointer.x + secondPointer.x) / 2
-        val midY = (firstPointer.y + secondPointer.y) / 2
-        midPointerBean.setData(x = midX, y = midY)
-    }
+
 
     /**
      * 计算两根手指的距离
@@ -529,10 +556,10 @@ class ClipViewLayout @JvmOverloads constructor(
     /**
      * 计算需要移动的距离
      */
-    private fun calculateDeltaDistance(x: Float, y: Float) : PointerBean{
+    private fun calculateDeltaDistance(x: Float, y: Float): PointerBean {
         val deltaX = x - mFirstLastDownPointer.x
         val deltaY = y - mFirstLastDownPointer.y
-        return PointerBean(deltaX,deltaY)
+        return PointerBean(deltaX, deltaY)
     }
 
     /**
@@ -547,7 +574,7 @@ class ClipViewLayout @JvmOverloads constructor(
         return newTwoPointerDistance / mTwoPointerDistance
     }
 
-    fun getClipView() : ClipView{
+    fun getClipView(): ClipView {
         return mClipView
     }
 }
