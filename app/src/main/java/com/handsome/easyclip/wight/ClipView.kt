@@ -6,7 +6,6 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
-import android.graphics.Rect
 import android.graphics.RectF
 import android.util.AttributeSet
 import android.util.Log
@@ -15,7 +14,7 @@ import android.view.View
 import com.handsome.easyclip.wight.bean.PointerBean
 
 /**
- * 负责画裁剪框
+ * 负责画裁剪框和背后的阴影
  */
 class ClipView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
@@ -27,7 +26,7 @@ class ClipView @JvmOverloads constructor(
     // 裁剪区域
     private val mClipRect = RectF()
     // 负责设置相交模式
-    private val xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
+    private val mXfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
 
     // 设置裁剪比例
     private var mAspectRadio = 1f
@@ -36,8 +35,6 @@ class ClipView @JvmOverloads constructor(
     // 配置区域
     // 蒙版颜色
     private var mMaskColor : Int= Color.parseColor("#a8000000")
-    // 框颜色
-    private var mClipBorderColor : Int = Color.parseColor("#FFFFFF")
 
     init{
         initPaintConfig()
@@ -47,14 +44,14 @@ class ClipView @JvmOverloads constructor(
         // 抗锯齿
         mLightPaint.isAntiAlias = true
         // 设置xfermode模式，此模式为绘制不相交的，相交部分透明。
-        mLightPaint.setXfermode(xfermode)
+        mLightPaint.setXfermode(mXfermode)
 
         // 设置边框厚度和颜色
         mClipBorderPaint.strokeWidth = 8f
         mClipBorderPaint.isAntiAlias = true
         // 设置为描边
         mClipBorderPaint.style = Paint.Style.STROKE
-        mClipBorderPaint.color = mClipBorderColor
+        mClipBorderPaint.color = Color.parseColor("#FFFFFF")
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -117,6 +114,24 @@ class ClipView @JvmOverloads constructor(
 
     fun getClipRect() : RectF{
         return mClipRect
+    }
+
+    fun setMaskColor(color : Int){
+        mMaskColor = color
+        invalidate()
+    }
+
+    fun setMaskColor(color : String){
+        setMaskColor(Color.parseColor(color))
+    }
+
+    fun setClipBorderColor(color : Int){
+        mClipBorderPaint.color = color
+        invalidate()
+    }
+
+    fun setClipBorderColor(color : String){
+        setClipBorderColor(Color.parseColor(color))
     }
 
     override fun onTouchEvent(event: MotionEvent?): Boolean {
