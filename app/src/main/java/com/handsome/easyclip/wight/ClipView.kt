@@ -8,10 +8,8 @@ import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.RectF
 import android.util.AttributeSet
-import android.util.Log
 import android.view.MotionEvent
 import android.view.View
-import com.handsome.easyclip.wight.bean.PointerBean
 
 /**
  * 负责画裁剪框和背后的阴影
@@ -29,14 +27,14 @@ class ClipView @JvmOverloads constructor(
     private val mXfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
 
     // 设置裁剪比例
-    private var mAspectRadio = 1f
-
+    private var mAspectRatio = 1f
 
     // 配置区域
     // 蒙版颜色
     private var mMaskColor : Int= Color.parseColor("#a8000000")
 
     init{
+        setLayerType(LAYER_TYPE_SOFTWARE, null)  // 禁止硬件GPU加速
         initPaintConfig()
     }
 
@@ -74,46 +72,16 @@ class ClipView @JvmOverloads constructor(
 
     fun setClipRect(clipRect : RectF){
         mClipRect.set(clipRect)
+        mAspectRatio = mClipRect.width() / mClipRect.height()
         invalidate()
     }
 
-    /**
-     * 设置裁剪比例
-     */
-    fun setAspectRadio(aspectRadio : Float){
-        if (aspectRadio <= 0){
-            Log.d("lx", "aspectRadio不能为null")
-            return
-        }
-        mAspectRadio = aspectRadio
-    }
-
-    /**
-     * 设置裁剪矩形，高根据比例自动换算。
-     */
-    fun setClipRectWidth(leftTopPointer : PointerBean,width : Int){
-        val left = leftTopPointer.x
-        val top = leftTopPointer.y
-        val right = left + width
-        val bottom = top + width / mAspectRadio
-        mClipRect.set(left,top,right,bottom)
-        invalidate()
-    }
-
-    /**
-     * 设置裁剪矩形，宽根据比例自动换算。
-     */
-    fun setClipRectHeight(leftTopPointer : PointerBean,height : Int){
-        val left = leftTopPointer.x
-        val top = leftTopPointer.y
-        val right = left + height * mAspectRadio
-        val bottom = top + height
-        mClipRect.set(left,top,right,bottom)
-        invalidate()
+    fun getAspectRatio() : Float{
+        return mAspectRatio
     }
 
     fun getClipRect() : RectF{
-        return mClipRect
+        return RectF(mClipRect)
     }
 
     fun setMaskColor(color : Int){

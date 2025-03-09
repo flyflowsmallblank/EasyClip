@@ -7,8 +7,6 @@ import android.graphics.RectF
 import android.net.Uri
 import android.os.Bundle
 import android.provider.MediaStore
-import android.view.ViewTreeObserver
-import android.view.ViewTreeObserver.OnGlobalLayoutListener
 import android.widget.Button
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -24,6 +22,7 @@ class SampleActivity : AppCompatActivity() {
     private lateinit var mClipLayout : ClipViewLayout
     private lateinit var mBtnClip : Button
     private lateinit var mBtnChoosePhoto : Button
+    private lateinit var mBtnAdjust : Button
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_sample)
@@ -56,6 +55,9 @@ class SampleActivity : AppCompatActivity() {
                 gotoPhoto()
             }
         }
+        mBtnAdjust.setOnClickListener {
+            // 更改好后setClipRect
+        }
     }
 
     /**
@@ -81,13 +83,14 @@ class SampleActivity : AppCompatActivity() {
         val bottom = 1000f
         val right = ClipViewHelper.getScreenWidth(this) - left
         mClipLayout.setClipRect(RectF(left, top, right, bottom))
-        mClipLayout.setImageUri(uri,false)
+        mClipLayout.setImageUri(uri,true)
     }
 
     private fun initView() {
         mClipLayout = findViewById(R.id.activity_sample_clip_view_layout)
         mBtnClip = findViewById(R.id.activity_sample_btn_clip)
         mBtnChoosePhoto = findViewById(R.id.activity_sample_btn_choose_photo)
+        mBtnAdjust = findViewById(R.id.activity_sample_btn_adjust_ratio)
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {

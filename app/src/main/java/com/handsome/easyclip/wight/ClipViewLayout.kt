@@ -30,7 +30,7 @@ class ClipViewLayout @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
 ) : RelativeLayout(context, attrs, defStyleAttr) {
     companion object {
-        private val TAG = ClipViewLayout::class.simpleName
+        private const val TAG = "ClipViewLayout"
     }
     // 负责绘制框的
     private val mClipView = ClipView(context)
@@ -60,7 +60,7 @@ class ClipViewLayout @JvmOverloads constructor(
     private var mMidPointer = PointerBean(-1f, -1f)
 
     // 相对中点，即相对于bitmap的中点
-    private var mRelativeMidPointer = PointerBean(-1f, -1f)
+    private var mRelativeMidPoint = PointerBean(-1f, -1f)
 
     // 如果有第二个手指的情况，刚开始两个手指的距离，即平方差
     private var mTwoPointerDistance = -1f
@@ -139,7 +139,7 @@ class ClipViewLayout @JvmOverloads constructor(
         val bitmapHeight = bitmap.height.toFloat()
         val bitmapAspectRadio = bitmapWidth / bitmapHeight
         val clipRect = mClipView.getClipRect()
-        if (bitmapAspectRadio > mOptions.aspectRatio) {
+        if (bitmapAspectRadio > mClipView.getAspectRatio()) {
             // 说明图片的宽相对比高更大，以图片的高为准
             // 计算框的高和图片的高的比例
             val clipHeight = clipRect.height()
@@ -269,7 +269,7 @@ class ClipViewLayout @JvmOverloads constructor(
 
         // 转换为未缩放时的坐标
         val currentScale = getScale()
-        mRelativeMidPointer.setData(
+        mRelativeMidPoint.setData(
             relativeX / currentScale,
             relativeY / currentScale
         )
@@ -474,7 +474,7 @@ class ClipViewLayout @JvmOverloads constructor(
         // 这个是设置缩放的倍数，优化用户体验的
         scale = scale.pow(mOptions.scaleLevel)
         // 按比例计算缩放中心
-        mMatrix.preScale(scale, scale, mRelativeMidPointer.x, mRelativeMidPointer.y)
+        mMatrix.preScale(scale, scale, mRelativeMidPoint.x, mRelativeMidPoint.y)
     }
 
     /**
@@ -508,7 +508,7 @@ class ClipViewLayout @JvmOverloads constructor(
         mFirstLastDownPointer.setData(-1f, -1f)
         mSecondLastDownPointer.setData(-1f, -1f)
         mMidPointer.setData(-1f, -1f)
-        mRelativeMidPointer.setData(-1f, -1f)
+        mRelativeMidPoint.setData(-1f, -1f)
         mTwoPointerDistance = -1f
     }
 
@@ -573,13 +573,6 @@ class ClipViewLayout @JvmOverloads constructor(
         return newTwoPointerDistance / mTwoPointerDistance
     }
 
-    /**
-     * 返回裁剪框View
-     */
-    fun getClipView(): ClipView {
-        return mClipView
-    }
-
     // 获取选配信息
     fun getOptions() : Options{
         return mOptions
@@ -593,8 +586,6 @@ class ClipViewLayout @JvmOverloads constructor(
 
     // 设置可选参数
     class Options{
-        // 当前固定的比例，宽高比例
-        var aspectRatio = 1f
 
         // 最小scale的值
         var minScale = 0.25f
